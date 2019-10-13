@@ -10,7 +10,7 @@ OPL2 opl2;
 
 
 int i = 0;
-volatile bool drumsOn = false;
+volatile bool drumsOn = true;
 volatile bool changeModulator = false;
 int note = 0;
 int octave = 0;
@@ -73,19 +73,6 @@ void setup() {
   opl2.setFNumber(8, opl2.getNoteFNumber(NOTE_A));
   Serial.begin(9600);
 
-  //set timer0 interrupt at 2kHz
-  //TCCR0A = 0;// set entire TCCR2A register to 0
-  //TCCR0B = 0;// same for TCCR2B
-  //TCNT0  = 0;//initialize counter value to 0
-  // set compare match register for 2khz increments
-  OCR0A = 124;// = (16*10^6) / (2000*64) - 1 (must be <256)
-  // turn on CTC mode
-  TCCR0A |= (1 << WGM01);
-  // Set CS01 and CS00 bits for 64 prescaler
-  TCCR0B |= (1 << CS01) | (1 << CS00);   
-  // enable timer compare interrupt
-  TIMSK0 |= (1 << OCIE0A);
-
   //set timer1 interrupt at 4Hz
   TCCR1A = 0;// set entire TCCR1A register to 0
   TCCR1B = 0;// same for TCCR1B
@@ -99,37 +86,31 @@ void setup() {
   // enable timer compare interrupt
   TIMSK1 |= (1 << OCIE1A);
   
-  //attachInterrupt(digitalPinToInterrupt(2), saveVoice, RISING);
+  //attachInterrupt(digitalPinToInterrupt(2), toggleDrums, RISING);
 }
 
-ISR(TIMER0_COMPA_vect){ //timer0 interrupt 2kHz toggles pin 8
-
-  //Set tempo timer according to analogRead if A0;
-  int tempoRead = analogRead(A0);
-
-  int tempo = (byte)(tempoRead / 6) + 84;
-  
-  //Serial.println((int) (16000000 / (16 * tempoRead)) - 1);
-
-  OCR1A = (int) (16000000 / (tempo * 5 * 4)) - 1;
-}
 
 ISR(TIMER1_COMPA_vect){//timer1 interrupt plays music
 
-//  bool bass   = i % 4 == 0;           // Bass drum every 1st tick
-//  bool snare  = (i + 2) % 4 == 0;     // Snare drum every 3rd tick
-//  bool tom    = false;                // No tom tom
-//  bool cymbal = i % 32 == 0;          // Cymbal every 32nd tick
-//  bool hiHat  = true;                 // Hi-hat every tick
-//
-//  if(drumsOn) {
-//    opl2.setDrums(bass, snare, tom, cymbal, hiHat);
-//  }
+  bool bass   = i % 4 == 0;           // Bass drum every 1st tick
+  bool snare  = (i + 2) % 4 == 0;     // Snare drum every 3rd tick
+  bool tom    = false;                // No tom tom
+  bool cymbal = i % 32 == 0;          // Cymbal every 32nd tick
+  bool hiHat  = true;                 // Hi-hat every tick
+
+  if(drumsOn) {
+    opl2.setDrums(bass, snare, tom, cymbal, hiHat);
+  }
+
+  //Set tempo timer according to analogRead if A0;
+  int tempoRead = analogRead(A0);
+  int tempo = (byte)(tempoRead / 6) + 84;
+  OCR1A = (int) (16000000 / (tempo * 8 * 4)) - 1;
   
-  int attack = (analogRead(A1) >> 6);
-  int decay = (analogRead(A2) >> 6);
-  int sustain = (analogRead(A3) >> 6);
-  int rel = (analogRead(A4) >> 6);
+  int attack = 15 - (analogRead(A1) >> 6);
+  int decay = 15 - (analogRead(A2) >> 6);
+  int sustain = 15 - (analogRead(A3) >> 6);
+  int rel = 15 - (analogRead(A4) >> 6);
 
   //Serial.println(rel);
   int noteHeight = analogRead(A5);
@@ -144,7 +125,7 @@ ISR(TIMER1_COMPA_vect){//timer1 interrupt plays music
       //opl2.setTremolo   (j, CARRIER, true);
       opl2.setVibrato   (j, CARRIER, true);
       opl2.setMultiplier(j, CARRIER, 0x01);
-      int type = digitalRead(7);
+
       if (type == LOW) {
         opl2.setMultiplier(j, MODULATOR, noteHeight >> 7);
         opl2.setWaveForm(j, MODULATOR, 0);
