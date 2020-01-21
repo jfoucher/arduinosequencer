@@ -26,7 +26,7 @@
 	#if BOARD_TYPE == OPL2_BOARD_TYPE_ARDUINO
 		#define PIN_LATCH 5
 		#define PIN_ADDR   4
-		#define PIN_RESET  3
+		#define PIN_RESET  7
     #define PIN_STORE 6
 	#else
 		#define PIN_LATCH 1				// GPIO header pin 12
