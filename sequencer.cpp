@@ -16,6 +16,8 @@
 #define ENCODER_TEMPO 0
 #define ENCODER_PITCH 1
 #define ENCODER_VOLUME 2
+#define CHANNEL_DATA_EEPROM_OFFSET 0
+#define NOTE_DATA_EEPROM_OFFSET 128
 
 Adafruit_MCP23017 mcp;
 Adafruit_MCP23017 mcp2;
@@ -29,8 +31,6 @@ typedef struct  {
   int min_value;
   int step;
 } Encoder;
-
-
 
 
 Encoder encoders[] = {
@@ -74,6 +74,8 @@ int nSteps = 32;
 bool tempoEncoder = true;
 
 int selectedChannel = 0;
+
+int selectedOperator = CARRIER;
 
 // Which note is selected.
 int selectedStep = 0;
@@ -190,12 +192,7 @@ void setup() {
   // enable timer compare interrupt
   TIMSK1 |= (1 << OCIE1A);
 
-  for (int m = 0; m < 32; m++) {
-    playNotes[selectedChannel][m] = m % 2 == 0 ? 32 : 0;
-    playNotes[1][m] = 40;
-    playNotes[7][m] = m % 4 == 0 ? 1 : 0;
-    playNotes[8][m] = (m + 1) % 4 == 0 ? 1 : 0;
-  }
+  
 
   pinMode(3, INPUT);
   pinMode(3, INPUT_PULLUP);
@@ -228,6 +225,36 @@ void setup() {
   pinMode(3, INPUT_PULLUP);
   pinMode(2, INPUT);
   pinMode(2, INPUT_PULLUP);
+
+  //Restore channel data from EEPROM
+  int chSize = sizeof(Channel);
+  for (int j = 0; j < 6; j++) {
+    uint8_t *pPtr = (uint8_t *)&channels[j];
+    for (uint8_t a=0; a < chSize; a++) {
+      *(pPtr+a) = EEPROM.read(j * chSize + a + CHANNEL_DATA_EEPROM_OFFSET);
+    }
+  }
+
+  //Restore playnotes from EEPROM
+  for (int j = 0; j < 11; j++) {
+    for (uint8_t a=0; a < 32; a++) {
+      int val;
+      EEPROM.get((int)(j * 32 + (a * sizeof(int)) + CHANNEL_DATA_EEPROM_OFFSET + NOTE_DATA_EEPROM_OFFSET), val);
+      playNotes[j][a] = val;
+    }
+  }
+  
+  EEPROM.get(512, tempo);
+  OCR1A = (int) (16000000 / (tempo * 8 * 4)) - 1;
+
+  EEPROM.get(516, nSteps);
+
+  for (int m = 0; m < 32; m++) {
+    playNotes[selectedChannel][m] = m % 2 == 0 ? 32 : 0;
+    playNotes[1][m] = 40;
+    playNotes[7][m] = m % 4 == 0 ? 1 : 0;
+    playNotes[8][m] = (m + 1) % 4 == 0 ? 1 : 0;
+  }
 }
 
 
@@ -328,6 +355,21 @@ void saveChannel(int j) {
   opl2.setDecay     (j, CARRIER, channels[j].decay);
   opl2.setSustain   (j, CARRIER, channels[j].sustain);
   opl2.setRelease   (j, CARRIER, channels[j].release);
+
+  //TODO save to Eeprom
+  //Also save "playNotes"
+  //Start address for this channel
+  
+  // int chSize = sizeof(Channel);
+  // for (uint8_t a=0; a < chSize; a++) {
+  //   uint8_t *pPtr = (uint8_t *)&channels[j];
+  //   uint8_t val = *(pPtr+a);
+  //   EEPROM.update(j * chSize + a + CHANNEL_DATA_EEPROM_OFFSET, val);
+  // }
+
+  // for (uint8_t a=0; a < 32; a++) {
+  //   EEPROM.put((int)(j * 32 + (a * sizeof(int)) + CHANNEL_DATA_EEPROM_OFFSET + NOTE_DATA_EEPROM_OFFSET), playNotes[j][a]);
+  // }
 }
 
 void loop() {
@@ -353,10 +395,20 @@ void loop() {
     Encoder encoder = encoders[0];
     if (pin == ENCODER_PITCH) {
       encoder = encoders[2];
-      encoder.value = playNotes[selectedChannel][selectedStep];
+      if (selectedOperator == CARRIER) {
+        encoder.value = playNotes[selectedChannel][selectedStep];
+      } else {
+        encoder.value = channels[selectedChannel].m_mult;
+      }
+      
     } else if (pin == ENCODER_VOLUME) {
       encoder = encoders[7];
-      encoder.value = channels[selectedChannel].volume;
+      if (selectedOperator == CARRIER) {
+        encoder.value = channels[selectedChannel].volume;
+      } else {
+        encoder.value = channels[selectedChannel].m_volume;
+      }
+      
     } else if (pin == ENCODER_TEMPO) {
       if (tempoEncoder == true) {
         encoder = encoders[0];
@@ -380,14 +432,25 @@ void loop() {
     }
 
     if (pin == ENCODER_PITCH) {
-      playNotes[selectedChannel][selectedStep] = encoder.value;
+      if (selectedOperator == CARRIER) {
+        playNotes[selectedChannel][selectedStep] = encoder.value;
+      } else {
+        channels[selectedChannel].m_mult = encoder.value;
+      }
+      
       Serial.print("pitch for  step ");
       Serial.print(selectedStep);
       Serial.print(" of channel ");
       Serial.print(selectedChannel);
       Serial.print(": ");
-      Serial.println(playNotes[selectedChannel][selectedStep]);
+      Serial.println(encoder.value);
     } else if (pin == ENCODER_VOLUME) {
+      if (selectedOperator == CARRIER) {
+        channels[selectedChannel].volume = encoder.value;
+      } else {
+        channels[selectedChannel].m_volume = encoder.value;
+      }
+
       channels[selectedChannel].volume = encoder.value;
       Serial.print("Volume: ");
       Serial.println(channels[selectedChannel].volume);
@@ -395,11 +458,13 @@ void loop() {
       if (tempoEncoder == true) {
         tempo = encoder.value;
         OCR1A = (int) (16000000 / (tempo * 8 * 4)) - 1;
+        EEPROM.put(512, tempo);
         Serial.println(tempo);
       } else {
         nSteps = encoder.value;
-        // Serial.print("num steps ");
-        // Serial.println(nSteps);
+        EEPROM.put(516, nSteps);
+        Serial.print("num steps ");
+        Serial.println(nSteps);
       }
       //Serial.println(tempo);
     }
