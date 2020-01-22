@@ -87,12 +87,12 @@ void OPL2::init() {
 	pinMode(pinLatch,   OUTPUT);
 	pinMode(pinAddress, OUTPUT);
 	pinMode(pinReset,   OUTPUT);
-  pinMode(PIN_STORE,   OUTPUT);
+    pinMode(PIN_STORE,   OUTPUT);
 
 	digitalWrite(pinLatch,   HIGH);
 	digitalWrite(pinReset,   HIGH);
 	digitalWrite(pinAddress, LOW);
-  digitalWrite(PIN_STORE, LOW);
+    digitalWrite(PIN_STORE, LOW);
 
 	reset();
 }
@@ -120,33 +120,34 @@ void OPL2::write(byte reg, byte data) {
 	#if BOARD_TYPE == OPL2_BOARD_TYPE_ARDUINO
 		SPI.transfer(reg);
     
-    digitalWrite(PIN_STORE, HIGH);
-    delayMicroseconds(1);
-    digitalWrite(PIN_STORE, LOW);
-    delayMicroseconds(1);
+		digitalWrite(PIN_STORE, HIGH);
+		//delayMicroseconds(1);
+		digitalWrite(PIN_STORE, LOW);
+		//delayMicroseconds(1);
 	#else
 		wiringPiSPIDataRW(SPI_CHANNEL, &reg, 1);
 	#endif
 	digitalWrite(pinLatch, LOW);
-	delayMicroseconds(1);
+	//delayMicroseconds(1);
 	digitalWrite(pinLatch, HIGH);
-	delayMicroseconds(4);
+	//delayMicroseconds(4);
 
 	digitalWrite(pinAddress, HIGH);
 	#if BOARD_TYPE == OPL2_BOARD_TYPE_ARDUINO
 		SPI.transfer(data);
 
-    digitalWrite(PIN_STORE, HIGH);
-    delayMicroseconds(1);
-    digitalWrite(PIN_STORE, LOW);
-    delayMicroseconds(1);
+		digitalWrite(PIN_STORE, HIGH);
+		//delayMicroseconds(1);
+		digitalWrite(PIN_STORE, LOW);
+		//delayMicroseconds(1);
+		digitalWrite(pinLatch, LOW);
+		//delayMicroseconds(1);
+		digitalWrite(pinLatch, HIGH);
+		//delayMicroseconds(23);
 	#else
 		wiringPiSPIDataRW(SPI_CHANNEL, &data, 1);
 	#endif
-	digitalWrite(pinLatch, LOW);
-	delayMicroseconds(1);
-	digitalWrite(pinLatch, HIGH);
-	delayMicroseconds(23);
+	
 }
 
 
