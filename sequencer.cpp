@@ -130,9 +130,6 @@ int switchInt;
 void play();
 
 void play() {
-  // if (i % 4 == 0) {
-  //   mcp2.digitalWrite(8, HIGH);
-  // }
   OCR1A = (int) (16000000 / (tempo * 8 * 4)) - 1;
   // play melodic instruments if required
   for(int j = 0; j<= 6; j++) {
@@ -146,11 +143,7 @@ void play() {
   // play drums instruments if required
   opl2.setDrums(playNotes[6][i], playNotes[7][i], playNotes[8][i], playNotes[9][i], playNotes[10][i]);
 
-  // Flash tempo led.
-  // Not sure if that will be necessary now.
-  // if ((i + 3) % 4 == 0) {
-  //   mcp2.digitalWrite(8, LOW);
-  // }
+
   i++;
   if (i >= nSteps) {
     i = 0;
@@ -411,6 +404,14 @@ void loop() {
     saveChannel(selectedChannel);
     saveChannel(1);
     //play();
+    if (i % 4 == 0) {
+      mcp2.digitalWrite(8, HIGH);
+    }
+      // Flash tempo led.
+  // Not sure if that will be necessary now.
+    if ((i + 3) % 4 == 0) {
+      mcp2.digitalWrite(8, LOW);
+    }
     playInterrupt = false;
   }
 
