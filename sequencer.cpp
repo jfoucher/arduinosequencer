@@ -4,6 +4,7 @@
 #include "Adafruit_MCP23017.h"
 #include <Arduino.h>
 #include <EEPROM.h>
+#include "SPI.h"
 
 #define DEBUG 1
 #define CHIP1ADDR 0x21
@@ -50,7 +51,7 @@ Encoder encoders[] = {
   {0, 15, 0, 1},
   
   // Volume
-  {0, 15, 0, 1},
+  {0, 63, 0, 1},
   // Waveform
   {0, 2, 0, 1},
   // Feedback
@@ -108,7 +109,7 @@ typedef struct  {
 
 
 Channel channels[6] = {
-    {14, 6, 6, 9, 0, 15, 1, 1, 1, 10, 2, 6, 9, 15, 3, 1},
+    {14, 6, 6, 9, 0, 35, 1, 1, 1, 10, 2, 6, 9, 35, 3, 1},
     {14, 6, 6, 9, 0, 15, 1, 1, 1, 10, 2, 6, 9, 15, 3, 1},
     {14, 6, 6, 9, 0, 15, 1, 1, 1, 10, 2, 6, 9, 15, 3, 1},
     {14, 6, 6, 9, 0, 15, 1, 1, 1, 10, 2, 6, 9, 15, 3, 1},
@@ -129,27 +130,7 @@ int switchInt;
 
 void play();
 
-void play() {
-  OCR1A = (int) (16000000 / (tempo * 8 * 4)) - 1;
-  // play melodic instruments if required
-  for(int j = 0; j<= 6; j++) {
-    if (playNotes[j][i]) {
-      octave = playNotes[j][i] >> 4;
-      note = (int)((float)(playNotes[j][i] & 0xf) / 16.0 * 12.0);
-      opl2.playNote(j, octave, note);
-    }
-  }
 
-  // play drums instruments if required
-  opl2.setDrums(playNotes[6][i], playNotes[7][i], playNotes[8][i], playNotes[9][i], playNotes[10][i]);
-
-
-  i++;
-  if (i >= nSteps) {
-    i = 0;
-  }
-  
-}
 
 void pinChanged() {
   encoderInterrupt = true;
@@ -160,7 +141,6 @@ void switchChanged() {
 }
 
 ISR(TIMER1_COMPA_vect){//timer1 interrupt plays music
-  play();
   playInterrupt = true;
 }
 
@@ -191,32 +171,36 @@ void setup() {
 
   //opl2.setDeepTremolo(true);
   // Set octave and frequency for bass drum.
-  opl2.setBlock(6, 4);
+  opl2.setBlock(6, 3);
   opl2.setFNumber(6, opl2.getNoteFNumber(NOTE_C));
 
   // Set octave and frequency for snare drum and hi-hat.
   opl2.setBlock(7, 3);
   opl2.setFNumber(7, opl2.getNoteFNumber(NOTE_C));
   // Set low volume on hi-hat
-  opl2.setVolume(7, OPERATOR1, 16);
+  opl2.setVolume(7, OPERATOR1, 0xF);
+  opl2.setVolume(7, OPERATOR2, 0xF);
 
   // Set octave and frequency for tom tom and cymbal.
   opl2.setBlock(8, 3);
   opl2.setFNumber(8, opl2.getNoteFNumber(NOTE_A));
+  opl2.setVolume(8, OPERATOR1, 0x0);
+  opl2.setVolume(8, OPERATOR2, 0x1F);
+
   Serial.begin(9600);
 
 
-  TCCR0A = 0;// set entire TCCR0A register to 0
-  TCCR0B = 0;// same for TCCR0B
-  TCNT0  = 0;//initialize counter value to 0
-  // set compare match register for 2khz increments
-  OCR0A = 124;// = (16*10^6) / (2000*64) - 1 (must be <256)
-  // turn on CTC mode
-  TCCR0A |= (1 << WGM01);
-  // Set CS01 and CS00 bits for 64 prescaler
-  TCCR0B |= (1 << CS01) | (1 << CS00);   
-  // enable timer compare interrupt
-  TIMSK0 |= (1 << OCIE0A);
+  // TCCR0A = 0;// set entire TCCR0A register to 0
+  // TCCR0B = 0;// same for TCCR0B
+  // TCNT0  = 0;//initialize counter value to 0
+  // // set compare match register for 2khz increments
+  // OCR0A = 0xB0;// = (16*10^6) / (2000*64) - 1 (must be <256)
+  // // turn on CTC mode
+  // TCCR0A |= (1 << WGM01);
+  // // Set CS02 and CS00 bits for 1024 prescaler
+  // TCCR0B |= (1 << CS02) | (1 << CS00);   
+  // // enable timer compare interrupt
+  // TIMSK0 |= (1 << OCIE0A);
 
   //set timer1 interrupt at 4Hz
   TCCR1A = 0;// set entire TCCR1A register to 0
@@ -231,7 +215,7 @@ void setup() {
   // enable timer compare interrupt
   TIMSK1 |= (1 << OCIE1A);
 
-  sei();
+  //sei();
 
   pinMode(3, INPUT);
   pinMode(3, INPUT_PULLUP);
@@ -264,15 +248,23 @@ void setup() {
   pinMode(3, INPUT_PULLUP);
   pinMode(2, INPUT);
   pinMode(2, INPUT_PULLUP);
+  pinMode(9, OUTPUT);
+  digitalWrite(9, LOW);
+
+  //Turn off all leds
+  SPI.transfer(0);
+  SPI.transfer(0);
+  digitalWrite(9, HIGH);
+  digitalWrite(9, LOW);
 
   //Restore channel data from EEPROM
-  int chSize = sizeof(Channel);
-  for (int j = 0; j < 6; j++) {
-    uint8_t *pPtr = (uint8_t *)&channels[j];
-    for (uint8_t a=0; a < chSize; a++) {
-      *(pPtr+a) = EEPROM.read(j * chSize + a + CHANNEL_DATA_EEPROM_OFFSET);
-    }
-  }
+  // int chSize = sizeof(Channel);
+  // for (int j = 0; j < 6; j++) {
+  //   uint8_t *pPtr = (uint8_t *)&channels[j];
+  //   for (uint8_t a=0; a < chSize; a++) {
+  //     *(pPtr+a) = EEPROM.read(j * chSize + a + CHANNEL_DATA_EEPROM_OFFSET);
+  //   }
+  // }
 
   //Restore playnotes from EEPROM
   // for (int j = 0; j < 11; j++) {
@@ -291,8 +283,11 @@ void setup() {
   for (int m = 0; m < 32; m++) {
     playNotes[selectedChannel][m] = m % 2 == 0 ? 32 : 0;
     //playNotes[1][m] = 40;
-    //playNotes[7][m] = m % 4 == 0 ? 1 : 0;
-    //playNotes[8][m] = (m + 1) % 4 == 0 ? 1 : 0;
+    // playNotes[6][m] = m % 2 == 0 ? 1 : 0;
+    // playNotes[7][m] =  1;
+    // playNotes[8][m] = (m + 2) % 8 == 0 ? 1 : 0;
+    // playNotes[9][m] = (m + 3) % 8 == 0 ? 1 : 0;
+    // playNotes[10][m] = (m + 4) % 8 == 0 ? 1 : 0;
   }
 }
 
@@ -301,52 +296,19 @@ void setup() {
 
 volatile int currentRow = 0;
 
-int changeLedRow();
-int changeLedRow() {
-  // Switch rows
 
-  for (int k = 0; k < LED_ROWS;k++) {
-    if (k != currentRow) {
-      mcp3.digitalWrite(k, HIGH);
-    }
-  }
+// ISR(TIMER0_COMPA_vect){  //change the 0 to 1 for timer1 and 2 for timer2
+
   
-  for (int j = 0; j < LED_COLS;j++) {
-    mcp3.digitalWrite(LED_ROWS + j, leds[currentRow * LED_COLS + j]);
-  }
-  mcp3.digitalWrite(currentRow, LOW);
-
-  currentRow++;
-  if (currentRow >= LED_ROWS) {
-    currentRow = 0;
-  }
-}
-
-ISR(TIMER0_COMPA_vect){  //change the 0 to 1 for timer1 and 2 for timer2
-   for (int k = 0; k < LED_ROWS;k++) {
-    if (k != currentRow) {
-      //mcp3.digitalWrite(k, HIGH);
-    }
-  }
-  
-  for (int j = 0; j < LED_COLS;j++) {
-    //mcp3.digitalWrite(LED_ROWS + j, leds[currentRow * LED_COLS + j]);
-  }
-  //mcp3.digitalWrite(currentRow, LOW);
-
-  currentRow++;
-  if (currentRow >= LED_ROWS) {
-    currentRow = 0;
-  }
-}
+// }
 
 int ledOn(int ref, int level);
 int ledOn (int ref, int level) {
-  leds[ref] = true;
+  leds[ref] = (256 - (level & 0xff)) | 1;
 }
 int ledOff (int ref);
 int ledOff (int ref) {
-  leds[ref] = false;
+  leds[ref] = 0;
 }
 
 void saveChannel(int j);
@@ -369,14 +331,14 @@ void saveChannel(int j) {
   opl2.setWaveForm(j, MODULATOR, channels[j].m_waveform);
 
   //Add button to set volume per channel
-  opl2.setVolume(j, MODULATOR, 15 - channels[j].m_volume);
+  opl2.setVolume(j, MODULATOR, 63 - channels[j].m_volume);
   opl2.setAttack    (j, MODULATOR, channels[j].m_attack);
   opl2.setDecay     (j, MODULATOR, channels[j].m_decay);
   opl2.setSustain   (j, MODULATOR, channels[j].m_sustain);
   opl2.setRelease   (j, MODULATOR, channels[j].m_release);
   
   //Add button to set volume per channel
-  opl2.setVolume(j, CARRIER, 15 - channels[j].volume);
+  opl2.setVolume(j, CARRIER, 63 - channels[j].volume);
   opl2.setWaveForm(j, CARRIER, channels[j].waveform);
   opl2.setAttack    (j, CARRIER, channels[j].attack);
   opl2.setDecay     (j, CARRIER, channels[j].decay);
@@ -399,19 +361,76 @@ void saveChannel(int j) {
   // }
 }
 
+uint8_t lc = 0;
+
+void play() {
+  OCR1A = (int) (16000000 / (tempo * 8 * 4)) - 1;
+  // play melodic instruments if required
+  for(int j = 0; j< 6; j++) {
+    if (playNotes[j][i]) {
+      octave = playNotes[j][i] >> 4;
+      note = (int)((float)(playNotes[j][i] & 0xf) / 16.0 * 12.0);
+      opl2.playNote(j, octave, note);
+    }
+  }
+  ledOn(i % 4, 255);
+  if (i % 4 == 0) {
+    ledOff(3);
+  } else {
+    ledOff((i % 4) - 1);
+  }
+  
+  // play drums instruments if required
+  opl2.setDrums(playNotes[6][i], playNotes[7][i], playNotes[8][i], playNotes[9][i], playNotes[10][i]);
+  
+  i++;
+  
+  if (i >= nSteps) {
+    i = 0;
+  }
+}
+
 void loop() {
+  //ledOn(4, 1);
+
+
+  //Tranfer two bytes, in the first one put which rows are on
+  //And in the second one which column(s) is on
+  uint8_t b1 = ~(1 << currentRow); // LOW means this row will be on
+  uint8_t b2 = 0;
+  for (int j = 0; j < LED_COLS;j++) {
+    uint8_t l = leds[currentRow * LED_COLS + j];
+    if (l > 0 && lc % l == 0) {
+      b2 |= 1 << j;
+    } else {
+      b2 &= ~(1 << j);
+    }
+  }
+
+  SPI.transfer(b1);
+  SPI.transfer(b2);
+  digitalWrite(9, HIGH);
+  digitalWrite(9, LOW);
+
+  
+  lc++;
+  currentRow++;
+  if (currentRow >= LED_ROWS) {
+    currentRow = 0;
+  }
+
   if (playInterrupt) {
     saveChannel(selectedChannel);
-    saveChannel(1);
-    //play();
+    
     if (i % 4 == 0) {
       mcp2.digitalWrite(8, HIGH);
     }
-      // Flash tempo led.
-  // Not sure if that will be necessary now.
+    // Flash tempo led.
+    // Not sure if that will be necessary now.
     if ((i + 3) % 4 == 0) {
       mcp2.digitalWrite(8, LOW);
     }
+    play();
     playInterrupt = false;
   }
 
@@ -523,9 +542,9 @@ void loop() {
     if (pin == 0) {
       tempoEncoder = !tempoEncoder;
       if (tempoEncoder) {
-        ledOn(1,1);
+        ledOn(0, 1);
       } else {
-        ledOff(1);
+        ledOn(0, 255);
       }
     }
     

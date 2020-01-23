@@ -92,7 +92,7 @@ void OPL2::init() {
 	digitalWrite(pinLatch,   HIGH);
 	digitalWrite(pinReset,   HIGH);
 	digitalWrite(pinAddress, LOW);
-    digitalWrite(PIN_STORE, LOW);
+   digitalWrite(PIN_STORE, LOW);
 
 	reset();
 }
