@@ -306,7 +306,7 @@ void setup() {
   nSteps = 32;
 
   for (int m = 0; m < 32; m++) {
-    playNotes[selectedChannel][m] = m % 2 == 0 ? 32 : 0;
+    playNotes[selectedChannel][m] = m % 4 == 0 ? 32 : 0;
     // playNotes[1][m] = 40;
     // playNotes[6][m] = m % 2 == 0 ? 1 : 0;
     // playNotes[7][m] =  1;
@@ -410,7 +410,7 @@ void play() {
   //TODO lower level of selected step led if in the same sector as the current step
   ledOn(selectedStep + 16, 34);
   int ledNum = (i % nSteps) + 16;
-  ledOn(ledNum, 255);
+  ledOn(ledNum, playNotes[selectedChannel][i] ? 255 : 15);
   // Serial.print("play led: ");
   // Serial.println(ledNum);
   if (i % 32 == 0) {
@@ -621,7 +621,7 @@ void loop() {
       }
     }
     if (pin == SWITCH_KON) {
-      playNotes[selectedChannel][selectedStep] = true;
+      playNotes[selectedChannel][selectedStep] = 30;
     }
     
     Serial.print("switch interrupt ");
