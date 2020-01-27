@@ -10,13 +10,21 @@
 #define CHIP1ADDR 0x21
 #define CHIP2ADDR 0x20
 // Rows are connected to ground
-#define LED_ROWS 2
+#define LED_ROWS 6
 // Cols are connected to 5V
-#define LED_COLS 3
+#define LED_COLS 8
 
 #define ENCODER_TEMPO 0
-#define ENCODER_PITCH 1
-#define ENCODER_VOLUME 2
+#define ENCODER_VOICE 1
+#define ENCODER_STEP 2
+#define ENCODER_PITCH 3
+#define ENCODER_WF 4
+#define ENCODER_VOLUME 8
+
+#define SWITCH_TEMPO 0
+#define SWITCH_MOD 8
+#define SWITCH_KON 1
+
 #define CHANNEL_DATA_EEPROM_OFFSET 0
 #define NOTE_DATA_EEPROM_OFFSET 128
 
@@ -43,6 +51,8 @@ Encoder encoders[] = {
   {0, 1023, 0, 1},
   // Voice select
   {0, 10, 0, 1},
+  // Step select
+  {0, 32, -1, 1},
   // Decay
   {0, 15, 0, 1},
   // Sustain
@@ -58,8 +68,7 @@ Encoder encoders[] = {
   {0, 2, 0, 1},
   // Voice select
   {0, 11, 0, 1},
-  // Step select
-  {0, 31, 0, 1},
+  
   // Amplitude Modulation
   {0, 2, 0, 1},
   // Vibrato
@@ -147,7 +156,7 @@ ISR(TIMER1_COMPA_vect){//timer1 interrupt plays music
 void setup() {
   Serial.begin(9600);
 
-  mcp2.begin(1);
+  mcp2.begin(0);
   mcp2.pinMode(8, OUTPUT);
 
   mcp3.begin(2);
@@ -222,7 +231,7 @@ void setup() {
   pinMode(2, INPUT);
   pinMode(2, INPUT_PULLUP);
 
-  mcp.begin();
+  mcp.begin(1);
 
   mcp.setupInterrupts(false, false, LOW);
   
@@ -236,9 +245,15 @@ void setup() {
   }
 
   mcp2.setupInterrupts(false, false, LOW);
-  mcp2.pinMode(0, INPUT);
-  mcp2.pullUp(0, HIGH);
-  mcp2.setupInterruptPin(0, CHANGE); 
+  mcp2.pinMode(SWITCH_KON, INPUT);
+  mcp2.pullUp(SWITCH_KON, HIGH);
+  mcp2.pinMode(SWITCH_MOD, INPUT);
+  mcp2.pullUp(SWITCH_MOD, HIGH);
+  mcp2.pinMode(SWITCH_TEMPO, INPUT);
+  mcp2.pullUp(SWITCH_TEMPO, HIGH);
+  mcp2.setupInterruptPin(SWITCH_KON, CHANGE);
+  mcp2.setupInterruptPin(SWITCH_MOD, CHANGE);
+  mcp2.setupInterruptPin(SWITCH_TEMPO, CHANGE);
 
   pinInt = digitalPinToInterrupt(3);
   switchInt = digitalPinToInterrupt(2);
@@ -250,6 +265,13 @@ void setup() {
   pinMode(2, INPUT_PULLUP);
   pinMode(9, OUTPUT);
   digitalWrite(9, LOW);
+
+  //Reset mcp
+  pinMode(12, OUTPUT);
+  digitalWrite(12, LOW);
+  digitalWrite(12, HIGH);
+  digitalWrite(12, LOW);
+  digitalWrite(12, HIGH);
 
   //Turn off all leds
   SPI.transfer(0);
@@ -276,13 +298,16 @@ void setup() {
   // }
   
   EEPROM.get(512, tempo);
+  tempo = 120;
   OCR1A = (int) (16000000 / (tempo * 8 * 4)) - 1;
 
   EEPROM.get(516, nSteps);
 
+  nSteps = 32;
+
   for (int m = 0; m < 32; m++) {
     playNotes[selectedChannel][m] = m % 2 == 0 ? 32 : 0;
-    //playNotes[1][m] = 40;
+    // playNotes[1][m] = 40;
     // playNotes[6][m] = m % 2 == 0 ? 1 : 0;
     // playNotes[7][m] =  1;
     // playNotes[8][m] = (m + 2) % 8 == 0 ? 1 : 0;
@@ -361,7 +386,7 @@ void saveChannel(int j) {
   // }
 }
 
-uint8_t lc = 0;
+
 
 void play() {
   OCR1A = (int) (16000000 / (tempo * 8 * 4)) - 1;
@@ -373,11 +398,25 @@ void play() {
       opl2.playNote(j, octave, note);
     }
   }
-  ledOn(i % 4, 255);
-  if (i % 4 == 0) {
-    ledOff(3);
+
+  // reset Mcp
+  pinMode(12, INPUT);
+  pinMode(12, INPUT_PULLUP);
+  pinMode(12, OUTPUT);
+  digitalWrite(12, LOW);
+  digitalWrite(12, HIGH);
+  digitalWrite(12, LOW);
+  digitalWrite(12, HIGH);
+  //TODO lower level of selected step led if in the same sector as the current step
+  ledOn(selectedStep + 16, 34);
+  int ledNum = (i % nSteps) + 16;
+  ledOn(ledNum, 255);
+  // Serial.print("play led: ");
+  // Serial.println(ledNum);
+  if (i % 32 == 0) {
+    ledOff(nSteps + 15);
   } else {
-    ledOff((i % 4) - 1);
+    ledOff((i % nSteps) + 15);
   }
   
   // play drums instruments if required
@@ -390,30 +429,42 @@ void play() {
   }
 }
 
+int l = 0;
+unsigned int pmils;
+uint8_t lc = 0;
+
+// 0  1  2  3  4  5  6  7
+// 8  9  10 11 12 13 14 15
+// 16 17 18 19 20 21 22 23
+// 24 25 26 27 28 29 30 31
+// 32 33 34 35 36 37 38 39
+// 40 41 42 43 44 45 46 47
+
 void loop() {
-  //ledOn(4, 1);
-
-
+  ledOn(selectedChannel, 255);
+  
   //Tranfer two bytes, in the first one put which rows are on
   //And in the second one which column(s) is on
-  uint8_t b1 = ~(1 << currentRow); // LOW means this row will be on
+  uint8_t b1 = (1 << currentRow); // HIGH means this row will be on
   uint8_t b2 = 0;
   for (int j = 0; j < LED_COLS;j++) {
     uint8_t l = leds[currentRow * LED_COLS + j];
-    if (l > 0 && lc % l == 0) {
+    if (l > 0 && lc-l >= 0) {
       b2 |= 1 << j;
     } else {
       b2 &= ~(1 << j);
     }
   }
-
   SPI.transfer(b1);
-  SPI.transfer(b2);
+  SPI.transfer(~b2);
+  // SPI.transfer(0x1);
+  // SPI.transfer(~0b01111100);
+
   digitalWrite(9, HIGH);
   digitalWrite(9, LOW);
 
-  
   lc++;
+
   currentRow++;
   if (currentRow >= LED_ROWS) {
     currentRow = 0;
@@ -422,26 +473,21 @@ void loop() {
   if (playInterrupt) {
     saveChannel(selectedChannel);
     
-    if (i % 4 == 0) {
-      mcp2.digitalWrite(8, HIGH);
-    }
-    // Flash tempo led.
-    // Not sure if that will be necessary now.
-    if ((i + 3) % 4 == 0) {
-      mcp2.digitalWrite(8, LOW);
-    }
     play();
     playInterrupt = false;
   }
 
   if (encoderInterrupt) {
     //An encoder was turned
+    encoderInterrupt = false;
     int pin = mcp.getLastInterruptPin();
     int val = mcp.getLastInterruptPinValue();
     mcp.readGPIO(0);
+
+    Serial.print("Pin interrupt ");
+    Serial.println(pin);
+    
     if (MCP23017_INT_ERR == val || MCP23017_INT_ERR == pin || val == 1) {
-      encoderInterrupt = false;
-      
       return ;
     }
     
@@ -472,6 +518,12 @@ void loop() {
         encoder = encoders[1];
         encoder.value = nSteps;
       }
+    } else if (pin == ENCODER_VOICE) {
+        encoder = encoders[3];
+        encoder.value = selectedChannel;
+    } else if (pin == ENCODER_STEP) {
+        encoder = encoders[4];
+        encoder.value = selectedStep;
     }
 
     if (other == 0) {
@@ -522,6 +574,26 @@ void loop() {
         Serial.println(nSteps);
       }
       //Serial.println(tempo);
+    } else if (pin == ENCODER_VOICE) {
+      ledOff(selectedChannel);
+      selectedChannel = encoder.value;
+      ledOn(selectedChannel, 255);
+      Serial.print("new channel ");
+      Serial.println(selectedChannel);
+      //Serial.println(tempo);
+    } else if (pin == ENCODER_STEP) {
+        ledOff(selectedStep + 16);
+        if (encoder.value >= nSteps) {
+          encoder.value = 0;
+        }
+        if (encoder.value < 0) {
+          encoder.value = nSteps - 1;
+        }
+        selectedStep = encoder.value;
+        ledOn(selectedStep + 16, 128);
+        Serial.print("new step ");
+        Serial.println(selectedChannel);
+      //Serial.println(tempo);
     }
     mcp.readGPIO(0);
     //while( ! (mcp.readGPIO(0) ));
@@ -531,27 +603,31 @@ void loop() {
 
   if (switchInterrupt) {
     // a switch was pressed
+    switchInterrupt = false;
     int pin = mcp2.getLastInterruptPin();
     int val = mcp2.getLastInterruptPinValue();
     mcp2.readGPIO(0);
     if (MCP23017_INT_ERR == val || MCP23017_INT_ERR == pin || val == 1) {
-      switchInterrupt = false;
+      
       return ;
     }
 
-    if (pin == 0) {
+    if (pin == SWITCH_TEMPO) {
       tempoEncoder = !tempoEncoder;
       if (tempoEncoder) {
-        ledOn(0, 1);
+        //ledOn(0, 1);
       } else {
-        ledOn(0, 255);
+        //ledOn(0, 255);
       }
+    }
+    if (pin == SWITCH_KON) {
+      playNotes[selectedChannel][selectedStep] = true;
     }
     
     Serial.print("switch interrupt ");
     Serial.println(pin);
 
-    switchInterrupt = false;
+
   }
 }
 
