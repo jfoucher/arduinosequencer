@@ -164,7 +164,10 @@ ISR(TIMER1_COMPA_vect){//timer1 interrupt plays music
 void saveChannel(int j);
 void saveChannel(int j) {
   if (j >= 6) {
-    if (j > 8) {
+    if (j == 6) {
+      opl2.setVolume(j, OPERATOR1, 63 - percussions[j - 6]);
+      opl2.setVolume(j, OPERATOR2, 63 - percussions[j - 6]);
+    } else if (j > 8) {
       opl2.setVolume(j - 1, OPERATOR2, 63 - percussions[j - 6]);
     } else {
       opl2.setVolume(j, OPERATOR1, 63 - percussions[j - 6]);
@@ -228,15 +231,20 @@ void saveChannel(int j) {
   //Also save "playNotes"
   //Start address for this channel
   
-
 }
-
 
 void setup() {
   //Serial.begin(9600);
+    //Reset mcp
+  pinMode(12, OUTPUT);
+  // digitalWrite(12, LOW);
+  // digitalWrite(12, HIGH);
+  // digitalWrite(12, LOW);
+  digitalWrite(12, HIGH);
 
-  
-    
+  //I2C_ClearBus();
+
+
   opl2.init();
 
   // Set percussion mode and load instruments.
@@ -258,8 +266,8 @@ void setup() {
   opl2.setBlock(7, 3);
   opl2.setFNumber(7, opl2.getNoteFNumber(NOTE_C));
   // Set low volume on hi-hat
-  opl2.setVolume(7, OPERATOR1, 0xF);
-  opl2.setVolume(7, OPERATOR2, 0xF);
+  opl2.setVolume(7, OPERATOR1, 0x2f);
+  opl2.setVolume(7, OPERATOR2, 0x2F);
 
   // Set octave and frequency for tom tom and cymbal.
   opl2.setBlock(8, 3);
@@ -302,14 +310,9 @@ void setup() {
   pinMode(2, INPUT);
   pinMode(2, INPUT_PULLUP);
 
-  //Reset mcp
-  pinMode(12, OUTPUT);
-  digitalWrite(12, LOW);
-  digitalWrite(12, HIGH);
-  digitalWrite(12, LOW);
-  digitalWrite(12, HIGH);
 
-  mcp2.begin(0);
+
+  delay(500);
   mcp.begin(1);
 
   mcp.setupInterrupts(false, false, LOW);
@@ -323,6 +326,8 @@ void setup() {
     mcp.setupInterruptPin(i, CHANGE); 
   }
 
+  delay(100);
+  mcp2.begin(0);
   mcp2.setupInterrupts(false, false, LOW);
 
   for(int i = 0; i <= 15;i++) {
@@ -362,7 +367,7 @@ void setup() {
       *(pPtr+a) = EEPROM.read(j * chSize + a + CHANNEL_DATA_EEPROM_OFFSET);
     }
   }
-  
+  //Serial.begin(115200);
   // // Restore playnotes from EEPROM
   for (int j = 0; j < 11; j++) {
     for (uint8_t a=0; a < 32; a++) {
@@ -376,8 +381,6 @@ void setup() {
       playNotes[j][a] = val == -1 ? 0 : val;
     }
   }
-
-  //Serial.begin(115200);
 
   // for (uint8_t a=0; a < 32; a++) {
   //   EEPROM.put((int)(j * 32 + (a * sizeof(int)) + CHANNEL_DATA_EEPROM_OFFSET + NOTE_DATA_EEPROM_OFFSET), playNotes[j][a]);
@@ -428,15 +431,6 @@ void play() {
     }
   }
 
-  // reset Mcp
-  pinMode(12, INPUT);
-  pinMode(12, INPUT_PULLUP);
-  pinMode(12, OUTPUT);
-
-  digitalWrite(12, LOW);
-  digitalWrite(12, HIGH);
-  digitalWrite(12, LOW);
-  digitalWrite(12, HIGH);
   //TODO lower level of selected step led if in the same sector as the current step
   
   if (i % 32 == 0) {
@@ -522,8 +516,8 @@ void loop() {
     // Serial.println(pin);
     
     if (MCP23017_INT_ERR == val || MCP23017_INT_ERR == pin || val == 1) {
-      digitalWrite(12, LOW);
-      digitalWrite(12, HIGH);
+      //digitalWrite(12, LOW);
+      //digitalWrite(12, HIGH);
       return ;
     }
     
@@ -716,8 +710,8 @@ void loop() {
     mcp2.readGPIO(0);
     
     if (MCP23017_INT_ERR == val || MCP23017_INT_ERR == pin || val == 1) {
-      digitalWrite(12, LOW);
-      digitalWrite(12, HIGH);
+      //digitalWrite(12, LOW);
+      //digitalWrite(12, HIGH);
       return ;
     }
     // Serial.print("switch interrupt ");

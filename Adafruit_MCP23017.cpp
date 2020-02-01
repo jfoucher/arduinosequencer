@@ -108,7 +108,7 @@ void Adafruit_MCP23017::begin(uint8_t addr) {
 	}
 	i2caddr = addr;
 
-	Wire.setClock(400000);
+	//Wire.setClock(400000);
 	Wire.begin();
 	TWBR = 12;
 	// set defaults!
